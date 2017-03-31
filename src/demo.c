@@ -421,7 +421,7 @@ void pdemo(char *cfgfile, char *weightfile, float thresh, int cam_index, const c
 {
     fprintf(stderr, "Perception Demo needs Jetson VisionWorks\n");
 }
-void stereo_stream()
+void stereo_stream(int cam_index, const char *filename)
 {
 	fprintf(stderr, "Stereo Demo needs Jetson VisionWorks\n");
 }
