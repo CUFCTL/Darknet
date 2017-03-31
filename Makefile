@@ -44,6 +44,8 @@ LDFLAGS+= -lcudnn
 endif
 
 ifeq ($(JETSON), 1)
+COMMON+= -DJETSON
+CFLAGS+= -DJETSON
 LDFLAGS+= -lvisionworks -lnvxio
 endif
 

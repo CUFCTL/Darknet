@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <math.h>
 
+#ifdef JETSON
+#include "stereo.h"
+#endif
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -444,6 +448,40 @@ void show_image(image p, const char *name)
     save_image(p, name);
 #endif
 }
+
+#ifdef JETSON
+void *image_to_CvMat_zed(void *arguments)
+{
+	int x, y, k;
+	struct zed_struct *args = arguments;
+
+	image copy = copy_image(args->zed);
+    constrain_image(copy);
+    if(args->zed.c == 3) rgbgr_image(copy);
+	IplImage *left = cvCreateImage(cvSize(args->zed.w/2,args->zed.h), IPL_DEPTH_8U, args->zed.c);
+	IplImage *right = cvCreateImage(cvSize(args->zed.w/2,args->zed.h), IPL_DEPTH_8U, args->zed.c);
+	int lstep = left->widthStep;
+	int rstep = right->widthStep;
+    for(y = 0; y < args->zed.h; ++y){
+        for(x = 0; x < args->zed.w; ++x){
+            for(k= 0; k < args->zed.c; ++k){
+				if(x < args->zed.w/2)
+					left->imageData[y*lstep + x*(args->zed.c) + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
+				else
+					right->imageData[y*rstep + (x-(args->zed.w)/2)*args->zed.c + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
+            }
+        }
+    }
+	cvConvert(left, args->cvleft); 
+	cvConvert(right, args->cvright);
+
+    cvReleaseImage(&left);
+    cvReleaseImage(&right);
+	free_image(copy);
+
+	return 0;
+}
+#endif
 
 #ifdef OPENCV
 

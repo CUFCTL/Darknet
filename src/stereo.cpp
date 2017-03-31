@@ -281,7 +281,7 @@ void compute_stereo_mat(CvMat *leftImg, CvMat *rightImg, CvMat *out)
     cv::Mat cv_img = map.getMat();
 	CvMat temp = cv_img;
 	cvCopy(&temp, out);
-	// imwrite("disparity.png", cv_img);
+	// imwrite("disparity_stereo.png", cv_img);
 
 	// free VX objects
 	vxReleaseImage(&left_in);
@@ -289,6 +289,6 @@ void compute_stereo_mat(CvMat *leftImg, CvMat *rightImg, CvMat *out)
 	vxReleaseImage(&right_in);
     vxReleaseImage(&right);
     vxReleaseImage(&disparity);
-	// cvReleaseMat(&cv_img);
+	cv_img.release();
 	return;
 }

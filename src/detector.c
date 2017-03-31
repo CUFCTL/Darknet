@@ -644,27 +644,6 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     }
 }
 
-void perception()
-{
-    char *left = "/home/ubuntu/Software/jtetrea/data/left/000002.png";
-    char *right = "/home/ubuntu/Software/jtetrea/data/right/000002.png";
-
-	int p[3];
-	p[0] = CV_IMWRITE_PNG_COMPRESSION;
-    p[1] = 100;
-    p[2] = 0;
-	CvMat *disparity = cvCreateMat(384, 1248, 0);
-	printf("%d\n", disparity->type);
-	compute_stereo(left, right, disparity);
-
-	cvNamedWindow("Demo", CV_WINDOW_NORMAL); 
-    cvMoveWindow("Demo", 0, 0);
-    cvResizeWindow("Demo", 600, 400);
-	cvShowImage("Demo", disparity);
-	cvWaitKey(2000);
-	cvSaveImage("disparity.png", disparity, p);
-}
-
 void run_detector(int argc, char **argv)
 {
     char *prefix = find_char_arg(argc, argv, "-prefix", 0);
@@ -711,6 +690,7 @@ void run_detector(int argc, char **argv)
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "recall")) validate_detector_recall(cfg, weights);
+	else if(0==strcmp(argv[2], "stereo")) stereo_stream(cam_index, filename);
     else if(0==strcmp(argv[2], "demo")) {
         list *options = read_data_cfg(datacfg);
         int classes = option_find_int(options, "classes", 20);
