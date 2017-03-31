@@ -48,18 +48,6 @@ void *stereo_in_thread(void *arguments)
 	compute_stereo_mat(args->cvleft, args->cvright, args->disparity);
     return 0;
 }
-#endif
-
-void *fetch_in_thread(void *ptr)
-{
-    in = get_image_from_stream(cap);
-    if(!in.data){
-        error("Stream closed.");
-    }
-    in_s = resize_image(in, net.w, net.h);
-    return 0;
-}
-
 void *zed_in_thread(void *ptr)
 {
     zed = get_image_from_stream(cap);
@@ -70,6 +58,17 @@ void *zed_in_thread(void *ptr)
         error("Stream closed.");
     }
 	in_s = resize_image(in, net.w, net.h);
+    return 0;
+}
+#endif
+
+void *fetch_in_thread(void *ptr)
+{
+    in = get_image_from_stream(cap);
+    if(!in.data){
+        error("Stream closed.");
+    }
+    in_s = resize_image(in, net.w, net.h);
     return 0;
 }
 
