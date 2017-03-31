@@ -40,6 +40,7 @@ static int demo_index = 0;
 static image images[FRAMES];
 static float *avg;
 
+#ifdef JETSON
 void *stereo_in_thread(void *arguments)
 {
 	struct zed_struct *args = arguments;
@@ -47,6 +48,7 @@ void *stereo_in_thread(void *arguments)
 	compute_stereo_mat(args->cvleft, args->cvright, args->disparity);
     return 0;
 }
+#endif
 
 void *fetch_in_thread(void *ptr)
 {
