@@ -41,37 +41,6 @@ static CvMat *cvleft;
 static CvMat *cvright;
 static image zed;
 
-void *image_to_CvMat(void *ptr)
-{
-	int x, y, k;
-
-	image copy = copy_image(zed);
-    constrain_image(copy);
-    if(in.c == 3) rgbgr_image(copy);
-	IplImage *left = cvCreateImage(cvSize(zed.w/2,zed.h), IPL_DEPTH_8U, zed.c);
-	IplImage *right = cvCreateImage(cvSize(zed.w/2,zed.h), IPL_DEPTH_8U, zed.c);
-	int lstep = left->widthStep;
-	int rstep = right->widthStep;
-    for(y = 0; y < zed.h; ++y){
-        for(x = 0; x < zed.w; ++x){
-            for(k= 0; k < zed.c; ++k){
-				if(x < zed.w/2)
-					left->imageData[y*lstep + x*zed.c + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
-				else
-					right->imageData[y*rstep + (x-zed.w/2)*zed.c + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
-            }
-        }
-    }
-	cvConvert(left, cvleft); 
-	cvConvert(right, cvright);
-
-    cvReleaseImage(&left);
-    cvReleaseImage(&right);
-	free_image(copy);
-
-	return 0;
-}
-
 void *stereo_in_thread(void *arguments)
 {
 	struct arg_struct *args = arguments;
