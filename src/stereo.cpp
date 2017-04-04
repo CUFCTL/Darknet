@@ -88,7 +88,7 @@ void compute_stereo(char *leftImg, char *rightImg, CvMat *out)
     nvxio::Application &app = nvxio::Application::get();
 
     // stereo configuration
-    std::string configFile = "/usr/share/visionworks/sources/data/stereo_matching_demo_config.ini";
+    std::string configFile = "/home/ubuntu/Software/jtetrea-darknet/data/zed_config.ini";
     StereoMatching::StereoMatchingParams params;
     StereoMatching::ImplementationType implementationType = StereoMatching::HIGH_LEVEL_API;
 
@@ -196,7 +196,7 @@ void compute_stereo_mat(CvMat *leftImg, CvMat *rightImg, CvMat *out)
     // stereo configuration
     std::string configFile = "/usr/share/visionworks/sources/data/stereo_matching_demo_config.ini";
     StereoMatching::StereoMatchingParams params;
-    StereoMatching::ImplementationType implementationType = StereoMatching::HIGH_LEVEL_API;
+    StereoMatching::ImplementationType implementationType = StereoMatching::LOW_LEVEL_API;
 
     // initialize application
     app.setDescription("This demo demonstrates Stereo Matching algorithm");
@@ -289,6 +289,5 @@ void compute_stereo_mat(CvMat *leftImg, CvMat *rightImg, CvMat *out)
 	vxReleaseImage(&right_in);
     vxReleaseImage(&right);
     vxReleaseImage(&disparity);
-	cv_img.release();
 	return;
 }

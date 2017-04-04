@@ -8,15 +8,7 @@
 #include "image.h"
 #include "demo.h"
 #include <sys/time.h>
-
-#ifdef JETSON
-#include "stereo.h"
-static image zed;
-#endif
-
 #define FRAMES 3
-
-#ifdef OPENCV
 
 static char **demo_names;
 static image **demo_alphabet;
@@ -36,33 +28,12 @@ static float demo_thresh = 0;
 static float demo_hier_thresh = .5;
 
 static float *predictions[FRAMES];
-static int demo_index = 0;
 static image images[FRAMES];
+static int demo_index = 0;
 static float *avg;
 
-#ifdef JETSON
-void *stereo_in_thread(void *arguments)
-{
-	struct zed_struct *args = arguments;
-	printf("Computing stereo...\n");
-	compute_stereo_mat(args->cvleft, args->cvright, args->disparity);
-    return 0;
-}
-void *zed_in_thread(void *ptr)
-{
-    zed = get_image_from_stream(cap);
-	in = crop_image(zed, 0, 0, zed.w/2, zed.h);
-	// in = get_image_from_stream(cap);
-
-    if(!in.data){
-        error("Stream closed.");
-    }
-	in_s = resize_image(in, net.w, net.h);
-    return 0;
-}
-#endif
-
-void *fetch_in_thread(void *ptr)
+#ifdef OPENCV
+static void *fetch_in_thread(void *ptr)
 {
     in = get_image_from_stream(cap);
     if(!in.data){
@@ -72,7 +43,7 @@ void *fetch_in_thread(void *ptr)
     return 0;
 }
 
-void *detect_in_thread(void *ptr)
+static void *detect_in_thread(void *ptr)
 {
     float nms = .4;
 
@@ -238,127 +209,48 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
         }
     }
 }
-
-#else
-void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix, float hier_thresh)
+void test_stream(int cam_index, const char *filename, int frame_skip, char *prefix)
 {
-    fprintf(stderr, "Demo needs OpenCV for webcam images.\n");
-}
-#endif
+	int j, count;
+	int delay = frame_skip;
 
-#ifdef JETSON
-void pdemo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix, float hier_thresh)
-{
-    int j, count;
-    image **alphabet = load_alphabet();
-    int delay = frame_skip;
-    demo_names = names;
-    demo_alphabet = alphabet;
-    demo_classes = classes;
-    demo_thresh = thresh;
-    demo_hier_thresh = hier_thresh;
-
-	// load network
-    printf("Perception Demo\n");
-    net = parse_network_cfg(cfgfile);
-    if(weightfile){
-        load_weights(&net, weightfile);
-    }
-    set_batch_network(&net, 1);
-    srand(2222222);
-
-	// open camera
     if(filename){
         printf("video file: %s\n", filename);
         cap = cvCaptureFromFile(filename);
     }else{
         cap = cvCaptureFromCAM(cam_index);
     }
+
     if(!cap) error("Couldn't connect to webcam.\n");
 
-	// create memory objects
-    layer l = net.layers[net.n-1];
-    avg = (float *) calloc(l.outputs, sizeof(float));
-    for(j = 0; j < FRAMES; ++j) predictions[j] = (float *) calloc(l.outputs, sizeof(float));
-    for(j = 0; j < FRAMES; ++j) images[j] = make_image(1,1,3);
-    boxes = (box *)calloc(l.w*l.h*l.n, sizeof(box));
-    probs = (float **)calloc(l.w*l.h*l.n, sizeof(float *));
-    for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = (float *)calloc(l.classes, sizeof(float));
+    pthread_t fetch_thread;
 
-	// pthread creation
-    pthread_t zed_thread;
-    pthread_t detect_thread;
-	pthread_t stereo_thread;
+    fetch_in_thread(0);
 
-    zed_in_thread(0);
-    det = in;
-    det_s = in_s;
-
-    zed_in_thread(0);
-    detect_in_thread(0);
-    disp = det;
-    det = in;
-    det_s = in_s;
+    fetch_in_thread(0);
+    disp = in;
 
     for(j = 0; j < FRAMES/2; ++j){
-        zed_in_thread(0);
-        detect_in_thread(0);
-        disp = det;
-        det = in;
-        det_s = in_s;
+        fetch_in_thread(0);
+        disp = in;
     }
-	
-	// zed structure arguments
-	struct zed_struct zed_args;
-	zed_args.zed = zed;
-	zed_args.cvleft = cvCreateMat(zed.h, zed.w/2, CV_8UC3);
-	zed_args.cvright = cvCreateMat(zed.h, zed.w/2, CV_8UC3);
-	zed_args.disparity = cvCreateMat(zed.h, zed.w/2, CV_8UC1);
-	stereo_in_thread(&zed_args);
 
-	// convert input frame to left/right CvMat
-	int p[3];
-	p[0] = CV_IMWRITE_PNG_COMPRESSION;
-    p[1] = 100;
-    p[2] = 0;
-	image_to_CvMat_zed(&zed_args);
-	cvSaveImage("cvleft.png", zed_args.cvleft, p);
-	cvSaveImage("cvright.png", zed_args.cvright, p);
-	cvSaveImage("disparity.png", zed_args.disparity, p);
-
-	// create window
     count = 0;
     if(!prefix){
         cvNamedWindow("Demo", CV_WINDOW_NORMAL); 
         cvMoveWindow("Demo", 0, 0);
-        cvResizeWindow("Demo", 600, 400);
-		cvNamedWindow("Stereo", CV_WINDOW_NORMAL); 
-        cvMoveWindow("Stereo", 600, 0);
-        cvResizeWindow("Stereo", 600, 400);
-		cvNamedWindow("Left", CV_WINDOW_NORMAL); 
-        cvMoveWindow("Left", 0, 400);
-        cvResizeWindow("Left", 600, 400);
-		cvNamedWindow("Right", CV_WINDOW_NORMAL); 
-        cvMoveWindow("Right", 600, 400);
-        cvResizeWindow("Right", 600, 400);
+        cvResizeWindow("Demo", 1352, 1013);
     }
 
-	// start processing
     double before = get_wall_time();
+
     while(1){
         ++count;
         if(1){
-			// launch pthreads
-            if(pthread_create(&zed_thread, 0, zed_in_thread, 0)) error("Thread creation failed");
-            if(pthread_create(&detect_thread, 0, detect_in_thread, 0)) error("Thread creation failed");
-			if(pthread_create(&stereo_thread, 0, stereo_in_thread, &zed_args)) error("Thread creation failed");
+            if(pthread_create(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
 
-			// display or save output
             if(!prefix){
-				show_image(disp, "Demo");
-				cvShowImage("Stereo", zed_args.disparity);
-				cvShowImage("Left", zed_args.cvleft);
-				cvShowImage("Right", zed_args.cvright);
+                show_image(disp, "Demo");
                 int c = cvWaitKey(1);
                 if (c == 10){
                     if(frame_skip == 0) frame_skip = 60;
@@ -372,29 +264,17 @@ void pdemo(char *cfgfile, char *weightfile, float thresh, int cam_index, const c
                 save_image(disp, buff);
             }
 
-			// wait on pthreads
-            pthread_join(zed_thread, 0);
-            pthread_join(detect_thread, 0);
-			pthread_join(stereo_thread, 0);
-			zed_args.zed = zed;
-			image_to_CvMat_zed(&zed_args);
+            pthread_join(fetch_thread, 0);
 
-			// ready for an update
             if(delay == 0){
                 free_image(disp);
-                disp  = det;
+                disp  = in;
             }
-
-            det   = in;
-            det_s = in_s;
         }else {
-            zed_in_thread(0);
-            det   = in;
-            det_s = in_s;
-            detect_in_thread(0);
+            fetch_in_thread(0);
             if(delay == 0) {
                 free_image(disp);
-                disp = det;
+                disp = in;
             }
             show_image(disp, "Demo");
             cvWaitKey(1);
@@ -411,19 +291,13 @@ void pdemo(char *cfgfile, char *weightfile, float thresh, int cam_index, const c
     }
 }
 
-void stereo_stream(int cam_index, const char *filename)
-{
-	
-}
-
 #else
-void pdemo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix, float hier_thresh)
+void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix, float hier_thresh)
 {
-    fprintf(stderr, "Perception Demo needs Jetson VisionWorks\n");
+    fprintf(stderr, "Demo needs OpenCV for webcam images.\n");
 }
-void stereo_stream(int cam_index, const char *filename)
+void test_stream(int cam_index, const char *filename, int frame_skip, char *prefix)
 {
-	fprintf(stderr, "Stereo Demo needs Jetson VisionWorks\n");
+	fprintf(stderr, "Stream needs OpenCV for webcam images.\n");
 }
 #endif
-

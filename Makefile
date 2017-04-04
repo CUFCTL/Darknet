@@ -55,7 +55,7 @@ LDFLAGS+= -lstdc++
 OBJ+=convolutional_kernels.o deconvolutional_kernels.o activation_kernels.o im2col_kernels.o col2im_kernels.o blas_kernels.o crop_layer_kernels.o dropout_layer_kernels.o maxpool_layer_kernels.o network_kernels.o avgpool_layer_kernels.o
 endif
 ifeq ($(JETSON), 1) 
-OBJ+=stereo_matching.o stereo.o
+OBJ+=stereo_matching.o stereo.o perception.o
 endif
 
 OBJS = $(addprefix $(OBJDIR), $(OBJ))

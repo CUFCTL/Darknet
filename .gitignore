@@ -16,6 +16,7 @@ decaf/
 submission/
 cfg/
 backup/
+weights/
 darknet
 .fuse*
 

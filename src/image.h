@@ -30,11 +30,10 @@ typedef struct {
 #ifdef OPENCV
 image get_image_from_stream(CvCapture *cap);
 image ipl_to_image(IplImage* src);
-#endif
-#endif
-
 #ifdef JETSON
 void *image_to_CvMat_zed(void *arguments);
+#endif
+#endif
 #endif
 
 float get_color(int c, int x, int max);

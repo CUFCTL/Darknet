@@ -468,7 +468,7 @@ void *image_to_CvMat_zed(void *arguments)
 				if(x < args->zed.w/2)
 					left->imageData[y*lstep + x*(args->zed.c) + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
 				else
-					right->imageData[y*rstep + (x-(args->zed.w)/2)*args->zed.c + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
+					right->imageData[y*lstep + (x-(args->zed.w)/2)*args->zed.c + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
             }
         }
     }
