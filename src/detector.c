@@ -691,8 +691,6 @@ void run_detector(int argc, char **argv)
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "recall")) validate_detector_recall(cfg, weights);
-	else if(0==strcmp(argv[2], "stereo")) stereo_stream(cam_index, filename, frame_skip, prefix);
-	else if(0==strcmp(argv[2], "stream")) test_stream(cam_index, filename, frame_skip, prefix);
     else if(0==strcmp(argv[2], "demo")) {
         list *options = read_data_cfg(datacfg);
         int classes = option_find_int(options, "classes", 20);
@@ -700,6 +698,9 @@ void run_detector(int argc, char **argv)
         char **names = get_labels(name_list);
         demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, hier_thresh);
     }
+#ifdef JETSON
+	else if(0==strcmp(argv[2], "stereo")) stereo_stream(cam_index, filename, frame_skip, prefix);
+	else if(0==strcmp(argv[2], "stream")) test_stream(cam_index, filename, frame_skip, prefix);
 	else if(0==strcmp(argv[2], "pdemo")) {
         list *options = read_data_cfg(datacfg);
         int classes = option_find_int(options, "classes", 20);
@@ -707,4 +708,5 @@ void run_detector(int argc, char **argv)
         char **names = get_labels(name_list);
         pdemo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, hier_thresh);
     }
+#endif
 }
