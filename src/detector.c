@@ -7,8 +7,6 @@
 #include "demo.h"
 #include "option_list.h"
 #include "blas.h"
-#include "stereo.h"
-#include "perception.h"
 
 static int coco_ids[] = {1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90};
 
@@ -211,6 +209,27 @@ void print_detector_detections(FILE **fps, char *id, box *boxes, float **probs, 
 
         for(j = 0; j < classes; ++j){
             if (probs[i][j]) fprintf(fps[j], "%s %f %f %f %f %f\n", id, probs[i][j],
+                    xmin, ymin, xmax, ymax);
+        }
+    }
+}
+
+void show_detector_detections(char *id, box *boxes, float **probs, int total, int classes, int w, int h)
+{
+    int i, j;
+    for(i = 0; i < total; ++i){
+        float xmin = boxes[i].x - boxes[i].w/2. + 1;
+        float xmax = boxes[i].x + boxes[i].w/2. + 1;
+        float ymin = boxes[i].y - boxes[i].h/2. + 1;
+        float ymax = boxes[i].y + boxes[i].h/2. + 1;
+
+        if (xmin < 1) xmin = 1;
+        if (ymin < 1) ymin = 1;
+        if (xmax > w) xmax = w;
+        if (ymax > h) ymax = h;
+
+        for(j = 0; j < classes; ++j){
+            if (probs[i][j]) printf("%s %f %f %f %f %f\n", id, probs[i][j],
                     xmin, ymin, xmax, ymax);
         }
     }
@@ -582,6 +601,183 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
     }
 }
 
+// calculate mAP using the area under curve of the Precision-recall curve.
+float calc_mAP(float *prec, float * rec, int classes) 
+{  
+    int i;
+    float mAP, AP = 0;
+
+    for (i = 0; i < classes; ++i)
+        if (rec[i-1] != rec[i]) // see if the value of the recall has changed
+            AP += prec[i]*(rec[i]-rec[i-1]); // calc average precision
+    mAP = (float)AP/classes;
+
+ 	return mAP;
+} 
+
+void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char *outfile)
+{
+    int j, k;
+    list *options = read_data_cfg(datacfg);
+    char *valid_images = option_find_str(options, "valid", "data/train.list");
+    char *name_list = option_find_str(options, "names", "data/names.list");
+    char **names = get_labels(name_list);
+    char *mapf = option_find_str(options, "map", 0);
+    int *map = 0;
+    if (mapf) map = read_map(mapf);
+
+	// load network
+    network net = parse_network_cfg(cfgfile);
+    if(weightfile){
+        load_weights(&net, weightfile);
+    }
+    set_batch_network(&net, 1);
+    fprintf(stderr, "Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
+    srand(time(0));
+
+	// get validation image paths
+    list *plist = get_paths(valid_images);
+    char **paths = (char **)list_to_array(plist);
+
+	// set output layer and # of classes
+    layer l = net.layers[net.n-1];
+    int classes = l.classes;
+
+	// memory for bounding boxes and class probabilities
+    box *boxes = calloc(l.w*l.h*l.n, sizeof(box));
+    float **probs = calloc(l.w*l.h*l.n, sizeof(float *));
+    for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = calloc(classes, sizeof(float *));
+
+	// parameters
+    int m = plist->size;
+    int i = 0;
+    int t;
+    float thresh = .5;
+    float iou_thresh = .5;
+    float nms = .45;
+	int nthreads = 4;
+
+	// memory objects for threads to load images
+    image *val = calloc(nthreads, sizeof(image));
+    image *val_resized = calloc(nthreads, sizeof(image));
+    image *buf = calloc(nthreads, sizeof(image));
+    image *buf_resized = calloc(nthreads, sizeof(image));
+    pthread_t *thr = calloc(nthreads, sizeof(pthread_t));
+
+	// argument structure to load images
+    load_args args = {0};
+    args.w = net.w;
+    args.h = net.h;
+    //args.type = IMAGE_DATA;
+    args.type = LETTERBOX_DATA;
+
+	// load data into threads
+    for(t = 0; t < nthreads; ++t){
+        args.path = paths[i+t];
+        args.im = &buf[t];
+        args.resized = &buf_resized[t];
+        thr[t] = load_data_in_thread(args);
+    }
+
+	int *total = (int *)calloc(classes, sizeof(int));;
+    int *proposals = (int *)calloc(classes, sizeof(int));
+    float *avg_iou = (float *)calloc(classes, sizeof(float));
+	int *FP = (int *)calloc(classes, sizeof(int));
+    int *TP = (int *)calloc(classes, sizeof(int));
+    time_t start = time(0);
+	// m = # of images // i = thread reference
+    for(i = nthreads; i < m+nthreads; i += nthreads){
+        fprintf(stderr, "%d\n", i);
+		// wait on all threads to load validation images
+        for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
+            pthread_join(thr[t], 0);
+            val[t] = buf[t];
+            val_resized[t] = buf_resized[t];
+        } // load next validation images in background threads
+        for(t = 0; t < nthreads && i+t < m; ++t){
+            args.path = paths[i+t];
+            args.im = &buf[t];
+            args.resized = &buf_resized[t];
+            thr[t] = load_data_in_thread(args);
+        } // serial inference of each loaded image
+        for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
+            char *path = paths[i+t-nthreads];
+            char *id = basecfg(path);
+            float *X = val_resized[t].data;
+
+			// inference and nms
+            network_predict(net, X);
+            get_region_boxes(l, 1, 1, thresh, probs, boxes, 0, map, .5);
+            if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, classes, nms);
+
+			// get labelpath
+			char labelpath[4096];
+		    find_replace(path, "images", "labels", labelpath);
+		    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+		    find_replace(labelpath, ".jpg", ".txt", labelpath);
+		    find_replace(labelpath, ".JPEG", ".txt", labelpath);
+
+			// count ground truth labels for current image
+			int num_labels = 0;
+			box_label *truth = read_boxes(labelpath, &num_labels);
+            for (j = 0; j < num_labels; ++j)
+                ++total[truth[j].id];
+			
+            // iterate over detected boxes
+		    for(k = 0; k < l.w*l.h*l.n; ++k){
+                int max_class = 0;
+                float max_prob = 0;
+
+                // assign maximum prob class to each box
+                for(int class = 0; class < classes; ++class){
+                    if(probs[k][class] > max_prob){
+                        max_class = class;
+                        max_prob = probs[k][class];
+                        continue;
+                    }
+                }
+                if(max_prob < thresh)
+                    continue;
+                else
+                {
+                    float best_iou = 0;
+                    ++proposals[max_class];
+
+                    // iterate over ground truth labels in image
+                    for (j = 0; j < num_labels; ++j) {
+
+                        // compare iou of label class
+                        if(max_class == truth[j].id)
+                        {
+                            box t = {truth[j].x, truth[j].y, truth[j].w, truth[j].h};
+                            float iou = box_iou(boxes[k], t);
+                            if(iou > best_iou){
+                                best_iou = iou;
+                            }
+                        }
+                    }
+
+                    // metric calculation for current positive
+                    if(best_iou > iou_thresh)
+                        ++TP[max_class];
+                    else
+                        ++FP[max_class];
+                    avg_iou[max_class] += best_iou;
+                }
+			}
+
+			// free memory
+            free(id);
+            free_image(val[t]);
+            free_image(val_resized[t]);
+        }
+    }
+    fprintf(stderr, "Total Detection Time: %f Seconds\n", (double)(time(0) - start));
+    fprintf(stderr, "%*s%*s%*s%*s%*s%*s%*s%*s\n", 20, "Class", 10, "Labels", 13, "Proposals", 8, "TP", 8,"FP", 11, "Recall", 13, "Precision", 11, "Avg IOU");
+    for(j = 0; j < classes; ++j)
+        fprintf(stderr, "%*s%*d%*d%*d%*d%*.2f%*.2f%*.2f\n", 20, names[j], 10, total[j], 13, proposals[j], 8, TP[j], 8, FP[j], 11, (float)TP[j]/total[j], 13, (float)TP[j]/proposals[j], 11, avg_iou[j]/total[j]);
+}
+
 void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh)
 {
     list *options = read_data_cfg(datacfg);
@@ -690,6 +886,7 @@ void run_detector(int argc, char **argv)
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
+	else if(0==strcmp(argv[2], "mAP")) validate_detector_mAP(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "recall")) validate_detector_recall(cfg, weights);
     else if(0==strcmp(argv[2], "demo")) {
         list *options = read_data_cfg(datacfg);
@@ -698,15 +895,4 @@ void run_detector(int argc, char **argv)
         char **names = get_labels(name_list);
         demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, hier_thresh);
     }
-#ifdef JETSON
-	else if(0==strcmp(argv[2], "stereo")) stereo_stream(cam_index, filename, frame_skip, prefix);
-	else if(0==strcmp(argv[2], "stream")) test_stream(cam_index, filename, frame_skip, prefix);
-	else if(0==strcmp(argv[2], "pdemo")) {
-        list *options = read_data_cfg(datacfg);
-        int classes = option_find_int(options, "classes", 20);
-        char *name_list = option_find_str(options, "names", "data/names.list");
-        char **names = get_labels(name_list);
-        pdemo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, hier_thresh);
-    }
-#endif
 }

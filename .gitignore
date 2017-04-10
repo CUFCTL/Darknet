@@ -17,8 +17,12 @@ submission/
 cfg/
 backup/
 weights/
+logs/
+results/
 darknet
 .fuse*
+
+train.sh
 
 # OS Generated #
 .DS_Store*
