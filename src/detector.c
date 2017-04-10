@@ -533,7 +533,7 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
     fprintf(stderr, "Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
     srand(time(0));
 
-    list *plist = get_paths("data/voc.2007.test");
+    list *plist = get_paths("/data1/LISA/yolo/val.txt");
     char **paths = (char **)list_to_array(plist);
 
     layer l = net.layers[net.n-1];
@@ -568,6 +568,8 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
         char labelpath[4096];
         find_replace(path, "images", "labels", labelpath);
         find_replace(labelpath, "JPEGImages", "labels", labelpath);
+        find_replace(labelpath, ".png", ".txt", labelpath);
+        find_replace(labelpath, ".PNG", ".txt", labelpath);
         find_replace(labelpath, ".jpg", ".txt", labelpath);
         find_replace(labelpath, ".JPEG", ".txt", labelpath);
 
@@ -714,6 +716,8 @@ void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char 
 			char labelpath[4096];
 		    find_replace(path, "images", "labels", labelpath);
 		    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+            find_replace(labelpath, ".png", ".txt", labelpath);
+            find_replace(labelpath, ".PNG", ".txt", labelpath);
 		    find_replace(labelpath, ".jpg", ".txt", labelpath);
 		    find_replace(labelpath, ".JPEG", ".txt", labelpath);
 
@@ -773,9 +777,9 @@ void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char 
         }
     }
     fprintf(stderr, "Total Detection Time: %f Seconds\n", (double)(time(0) - start));
-    fprintf(stderr, "%*s%*s%*s%*s%*s%*s%*s%*s\n", 20, "Class", 10, "Labels", 13, "Proposals", 8, "TP", 8,"FP", 11, "Recall", 13, "Precision", 11, "Avg IOU");
+    fprintf(stderr, "%*s%*s%*s%*s%*s%*s%*s%*s\n", 24, "Class", 10, "Labels", 13, "Proposals", 8, "TP", 8,"FP", 11, "Recall", 13, "Precision", 11, "Avg IOU");
     for(j = 0; j < classes; ++j)
-        fprintf(stderr, "%*s%*d%*d%*d%*d%*.2f%*.2f%*.2f\n", 20, names[j], 10, total[j], 13, proposals[j], 8, TP[j], 8, FP[j], 11, (float)TP[j]/total[j], 13, (float)TP[j]/proposals[j], 11, avg_iou[j]/total[j]);
+        fprintf(stderr, "%*s%*d%*d%*d%*d%*.2f%*.2f%*.2f\n", 24, names[j], 10, total[j], 13, proposals[j], 8, TP[j], 8, FP[j], 11, (float)TP[j]/((total[j] > 0) ? total[j] : 1), 13, (float)TP[j]/((proposals[j] > 0) ? proposals[j] : 1), 11, avg_iou[j]/((total[j] > 0) ? total[j] : 1));
 }
 
 void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh)
