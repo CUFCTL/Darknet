@@ -19,6 +19,7 @@ backup/
 weights/
 logs/
 results/
+training/
 darknet
 .fuse*
 

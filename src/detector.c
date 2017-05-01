@@ -615,9 +615,9 @@ float calc_mAP(float *prec, float * rec, int classes)
     mAP = (float)AP/classes;
 
  	return mAP;
-} 
+}
 
-void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char *outfile)
+void validate_detector_metrics(char *datacfg, char *cfgfile, char *weightfile, char *outfile)
 {
     int j, k;
     list *options = read_data_cfg(datacfg);
@@ -628,7 +628,7 @@ void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char 
     int *map = 0;
     if (mapf) map = read_map(mapf);
 
-	// load network
+    // load network
     network net = parse_network_cfg(cfgfile);
     if(weightfile){
         load_weights(&net, weightfile);
@@ -637,43 +637,43 @@ void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char 
     fprintf(stderr, "Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
     srand(time(0));
 
-	// get validation image paths
+    // get validation image paths
     list *plist = get_paths(valid_images);
     char **paths = (char **)list_to_array(plist);
 
-	// set output layer and # of classes
+    // set output layer and # of classes
     layer l = net.layers[net.n-1];
     int classes = l.classes;
 
-	// memory for bounding boxes and class probabilities
+    // memory for bounding boxes and class probabilities
     box *boxes = calloc(l.w*l.h*l.n, sizeof(box));
     float **probs = calloc(l.w*l.h*l.n, sizeof(float *));
     for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = calloc(classes, sizeof(float *));
 
-	// parameters
+    // parameters
     int m = plist->size;
     int i = 0;
     int t;
-    float thresh = .5;
+    float thresh = .005;
     float iou_thresh = .5;
     float nms = .45;
-	int nthreads = 4;
+    int nthreads = 4;
 
-	// memory objects for threads to load images
+    // memory objects for threads to load images
     image *val = calloc(nthreads, sizeof(image));
     image *val_resized = calloc(nthreads, sizeof(image));
     image *buf = calloc(nthreads, sizeof(image));
     image *buf_resized = calloc(nthreads, sizeof(image));
     pthread_t *thr = calloc(nthreads, sizeof(pthread_t));
 
-	// argument structure to load images
+    // argument structure to load images
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
     //args.type = IMAGE_DATA;
     args.type = LETTERBOX_DATA;
 
-	// load data into threads
+    // load data into threads
     for(t = 0; t < nthreads; ++t){
         args.path = paths[i+t];
         args.im = &buf[t];
@@ -681,16 +681,19 @@ void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char 
         thr[t] = load_data_in_thread(args);
     }
 
-	int *total = (int *)calloc(classes, sizeof(int));;
+    int *total = (int *)calloc(classes, sizeof(int));;
     int *proposals = (int *)calloc(classes, sizeof(int));
-    float *avg_iou = (float *)calloc(classes, sizeof(float));
-	int *FP = (int *)calloc(classes, sizeof(int));
+    int *FP = (int *)calloc(classes, sizeof(int));
     int *TP = (int *)calloc(classes, sizeof(int));
+    float *f1_score = (float *)calloc(classes, sizeof(float));
+    float *recall = (float *)calloc(classes, sizeof(float));
+    float *precision = (float *)calloc(classes, sizeof(float));
+    float *avg_iou = (float *)calloc(classes, sizeof(float));
     time_t start = time(0);
-	// m = # of images // i = thread reference
+    // m = # of images // i = thread reference
     for(i = nthreads; i < m+nthreads; i += nthreads){
         fprintf(stderr, "%d\n", i);
-		// wait on all threads to load validation images
+        // wait on all threads to load validation images
         for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
             pthread_join(thr[t], 0);
             val[t] = buf[t];
@@ -707,28 +710,28 @@ void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char 
             char *id = basecfg(path);
             float *X = val_resized[t].data;
 
-			// inference and nms
+            // inference and nms
             network_predict(net, X);
             get_region_boxes(l, 1, 1, thresh, probs, boxes, 0, map, .5);
             if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, classes, nms);
 
-			// get labelpath
-			char labelpath[4096];
-		    find_replace(path, "images", "labels", labelpath);
-		    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+            // get labelpath
+            char labelpath[4096];
+            find_replace(path, "images", "labels", labelpath);
+            find_replace(labelpath, "JPEGImages", "labels", labelpath);
             find_replace(labelpath, ".png", ".txt", labelpath);
             find_replace(labelpath, ".PNG", ".txt", labelpath);
-		    find_replace(labelpath, ".jpg", ".txt", labelpath);
-		    find_replace(labelpath, ".JPEG", ".txt", labelpath);
+            find_replace(labelpath, ".jpg", ".txt", labelpath);
+            find_replace(labelpath, ".JPEG", ".txt", labelpath);
 
-			// count ground truth labels for current image
-			int num_labels = 0;
-			box_label *truth = read_boxes(labelpath, &num_labels);
+            // count ground truth labels for current image
+            int num_labels = 0;
+            box_label *truth = read_boxes(labelpath, &num_labels);
             for (j = 0; j < num_labels; ++j)
                 ++total[truth[j].id];
-			
+            
             // iterate over detected boxes
-		    for(k = 0; k < l.w*l.h*l.n; ++k){
+            for(k = 0; k < l.w*l.h*l.n; ++k){
                 int max_class = 0;
                 float max_prob = 0;
 
@@ -768,18 +771,30 @@ void validate_detector_mAP(char *datacfg, char *cfgfile, char *weightfile, char 
                         ++FP[max_class];
                     avg_iou[max_class] += best_iou;
                 }
-			}
+            }
 
-			// free memory
+            // free memory
             free(id);
             free_image(val[t]);
             free_image(val_resized[t]);
         }
     }
     fprintf(stderr, "Total Detection Time: %f Seconds\n", (double)(time(0) - start));
-    fprintf(stderr, "%*s%*s%*s%*s%*s%*s%*s%*s\n", 24, "Class", 10, "Labels", 13, "Proposals", 8, "TP", 8,"FP", 11, "Recall", 13, "Precision", 11, "Avg IOU");
+
+
+    // calculate per-class precision/recall and then mAP
     for(j = 0; j < classes; ++j)
-        fprintf(stderr, "%*s%*d%*d%*d%*d%*.2f%*.2f%*.2f\n", 24, names[j], 10, total[j], 13, proposals[j], 8, TP[j], 8, FP[j], 11, (float)TP[j]/((total[j] > 0) ? total[j] : 1), 13, (float)TP[j]/((proposals[j] > 0) ? proposals[j] : 1), 11, avg_iou[j]/((total[j] > 0) ? total[j] : 1));
+    {
+        recall[j] = (float)TP[j]/((total[j] > 0) ? total[j] : 1);
+        precision[j] = (float)TP[j]/((proposals[j] > 0) ? proposals[j] : 1);
+        if(recall[j] > 0)
+            f1_score[j] = 2 * (precision[j] * recall[j]) / (precision[j] + recall[j]);
+        avg_iou[j] = avg_iou[j]/((total[j] > 0) ? total[j] : 1);
+    }
+
+    fprintf(stderr, "%*s%*s%*s%*s%*s\n", 24, "Class", 11, "Recall", 13, "Precision", 11, "F1 Score", 11, "Avg IOU");
+        for(j = 0; j < classes; ++j)
+            fprintf(stderr, "%*s%*.2f%*.2f%*.2f%*.2f\n", 24, names[j], 11, recall[j], 13, precision[j], 11, f1_score[j], 11, avg_iou[j]);
 }
 
 void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh)
@@ -848,7 +863,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
 void run_detector(int argc, char **argv)
 {
     char *prefix = find_char_arg(argc, argv, "-prefix", 0);
-    float thresh = find_float_arg(argc, argv, "-thresh", .24);
+    float thresh = find_float_arg(argc, argv, "-thresh", .25);
     float hier_thresh = find_float_arg(argc, argv, "-hier", .5);
     int cam_index = find_int_arg(argc, argv, "-c", 0);
     int frame_skip = find_int_arg(argc, argv, "-s", 0);
@@ -890,7 +905,7 @@ void run_detector(int argc, char **argv)
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
-	else if(0==strcmp(argv[2], "mAP")) validate_detector_mAP(datacfg, cfg, weights, outfile);
+	else if(0==strcmp(argv[2], "metrics")) validate_detector_metrics(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "recall")) validate_detector_recall(cfg, weights);
     else if(0==strcmp(argv[2], "demo")) {
         list *options = read_data_cfg(datacfg);
