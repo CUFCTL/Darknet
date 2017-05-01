@@ -1,0 +1,14 @@
+#!/bin/bash
+#PBS -N darknet_train
+#PBS -l select=1:ncpus=8:ngpus=2:mem=16gb:gpu_model=k40:phase=11a
+#PBS -l walltime=24:00:00
+
+module purge
+module purge
+module add gcc/4.8.1 anaconda/4.2.0
+module add opencv/2.4.9 ffmpeg/2.4
+module add cuda-toolkit/8.0.44 cuDNN/8.0v5.1
+
+cd /scratch2/jtetrea/jtetrea-darknet/
+
+./darknet detector train cfg/kitti.data cfg/yolo-kitti-624x192-lr0001-bs64.cfg 2>&1 | tee logs/yolo-kitti-624x192-lr0001-bs64.log

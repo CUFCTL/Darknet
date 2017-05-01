@@ -4,8 +4,8 @@ OPENCV=1
 JETSON=0
 DEBUG=0
 
-# This is what I use, uncomment if you know your arch and want to specify
-ARCH=  -gencode arch=compute_53,code=compute_53
+ARCH= -gencode arch=compute_35,code=compute_35 # k40/k20
+# ARCH=  -gencode arch=compute_53,code=compute_53 # Jetson
 
 VPATH=./src/
 EXEC=darknet
